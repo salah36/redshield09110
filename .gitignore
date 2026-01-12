@@ -29,3 +29,6 @@ Thumbs.db
 # Database
 *.db
 *.sqlite
+
+# Temp files
+tmpclaude-*
