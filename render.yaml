@@ -1,0 +1,52 @@
+services:
+  # Backend API
+  - type: web
+    name: redshield-api
+    env: node
+    rootDir: redshield-dashboard2/server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: MAIN_GUILD_ID
+        sync: false
+      - key: CONTRIBUTOR_ROLE_ID
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: DASHBOARD_PORT
+        value: "10000"
+      - key: DASHBOARD_BASE_URL
+        sync: false
+      - key: DASHBOARD_FRONTEND_URL
+        sync: false
+
+  # Discord Bot
+  - type: worker
+    name: redshield-bot
+    env: node
+    rootDir: bot
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: MAIN_GUILD_ID
+        sync: false
+      - key: CONTRIBUTOR_ROLE_ID
+        sync: false

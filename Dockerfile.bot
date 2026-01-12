@@ -1,0 +1,15 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY bot/package*.json ./
+
+# Install dependencies
+RUN npm install --production
+
+# Copy bot source code
+COPY bot/src ./src
+
+# Start bot
+CMD ["node", "src/index.js"]

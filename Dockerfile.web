@@ -1,0 +1,32 @@
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /app/frontend
+
+# Build frontend
+COPY web/frontend/package*.json ./
+RUN npm install
+
+COPY web/frontend ./
+RUN npm run build
+
+# Backend image
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy backend files
+COPY web/backend/package*.json ./
+RUN npm install --production
+
+COPY web/backend/src ./src
+
+# Copy built frontend
+COPY --from=frontend-build /app/frontend/dist ./public
+
+# Serve frontend from backend
+RUN npm install express
+
+# Expose port
+EXPOSE 3000
+
+CMD ["node", "src/server.js"]

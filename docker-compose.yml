@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: redshield-db
+    environment:
+      POSTGRES_USER: redshield_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-redshield_password}
+      POSTGRES_DB: redshield
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redshield_user -d redshield"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: redshield-bot
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - MAIN_GUILD_ID=${MAIN_GUILD_ID:-1457583613309620389}
+      - CONTRIBUTOR_ROLE_ID=${CONTRIBUTOR_ROLE_ID}
+      - PARTNER_ROLE_ID=${PARTNER_ROLE_ID}
+      - DATABASE_URL=postgresql://redshield_user:${DB_PASSWORD:-redshield_password}@postgres:5432/redshield
+      - NODE_ENV=${NODE_ENV:-production}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: redshield-web
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - MAIN_GUILD_ID=${MAIN_GUILD_ID:-1457583613309620389}
+      - CONTRIBUTOR_ROLE_ID=${CONTRIBUTOR_ROLE_ID}
+      - PARTNER_ROLE_ID=${PARTNER_ROLE_ID}
+      - DATABASE_URL=postgresql://redshield_user:${DB_PASSWORD:-redshield_password}@postgres:5432/redshield
+      - WEB_PORT=3000
+      - WEB_BASE_URL=${WEB_BASE_URL:-http://localhost:3000}
+      - SESSION_SECRET=${SESSION_SECRET:-change-this-secret-key}
+      - NODE_ENV=${NODE_ENV:-production}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
