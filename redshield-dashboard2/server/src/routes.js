@@ -1481,4 +1481,189 @@ router.post('/license-keys/generate-batch', isOwnerMiddleware, async (req, res) 
   }
 });
 
+// ============================================================================
+// ADMIN USER MANAGEMENT ROUTES (Owner Only)
+// ============================================================================
+
+// Get all dashboard users (Owner only)
+router.get('/admin/users', isOwnerMiddleware, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, role, search } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const conditions = [];
+    const params = [];
+
+    if (role) {
+      conditions.push('role = ?');
+      params.push(role);
+    }
+    if (search) {
+      conditions.push('(username LIKE ? OR discord_user_id LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Get total count
+    const [countResult] = await pool.execute(
+      `SELECT COUNT(*) as total FROM dashboard_users ${whereClause}`,
+      params
+    );
+
+    // Get users with pagination
+    const [users] = await pool.execute(
+      `SELECT * FROM dashboard_users ${whereClause} ORDER BY last_seen DESC LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    res.json({
+      users,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: countResult[0].total,
+        totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Get single user details (Owner only)
+router.get('/admin/users/:userId', isOwnerMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const [users] = await pool.execute(
+      'SELECT * FROM dashboard_users WHERE discord_user_id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get user's license info if any
+    const [licenses] = await pool.execute(
+      'SELECT * FROM license_keys WHERE claimed_by = ? ORDER BY claimed_at DESC',
+      [userId]
+    );
+
+    res.json({
+      user: users[0],
+      licenses
+    });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// Update user role (Owner only)
+router.patch('/admin/users/:userId/role', isOwnerMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    if (!['OWNER', 'CONTRIBUTOR', 'SERVER_ADMIN'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be OWNER, CONTRIBUTOR, or SERVER_ADMIN' });
+    }
+
+    const [result] = await pool.execute(
+      'UPDATE dashboard_users SET role = ? WHERE discord_user_id = ?',
+      [role, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: 'Role updated successfully', role });
+  } catch (error) {
+    console.error('Error updating role:', error);
+    res.status(500).json({ error: 'Failed to update role' });
+  }
+});
+
+// Ban/Unban user (Owner only)
+router.patch('/admin/users/:userId/ban', isOwnerMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { banned } = req.body;
+
+    const [result] = await pool.execute(
+      'UPDATE dashboard_users SET is_active = ? WHERE discord_user_id = ?',
+      [!banned, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      message: banned ? 'User banned successfully' : 'User unbanned successfully',
+      is_active: !banned
+    });
+  } catch (error) {
+    console.error('Error updating ban status:', error);
+    res.status(500).json({ error: 'Failed to update ban status' });
+  }
+});
+
+// Delete user (Owner only)
+router.delete('/admin/users/:userId', isOwnerMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Don't allow deleting the owner
+    if (isOwner(userId)) {
+      return res.status(403).json({ error: 'Cannot delete the owner account' });
+    }
+
+    const [result] = await pool.execute(
+      'DELETE FROM dashboard_users WHERE discord_user_id = ?',
+      [userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Revoke user's license (Owner only)
+router.patch('/admin/users/:userId/revoke-license', isOwnerMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Update license status to REVOKED
+    const [result] = await pool.execute(
+      `UPDATE license_keys SET status = 'REVOKED' WHERE claimed_by = ? AND status = 'CLAIMED'`,
+      [userId]
+    );
+
+    // Also update user role to SERVER_ADMIN and deactivate
+    await pool.execute(
+      `UPDATE dashboard_users SET role = 'SERVER_ADMIN', is_active = FALSE WHERE discord_user_id = ?`,
+      [userId]
+    );
+
+    res.json({
+      message: 'License revoked successfully',
+      licensesRevoked: result.affectedRows
+    });
+  } catch (error) {
+    console.error('Error revoking license:', error);
+    res.status(500).json({ error: 'Failed to revoke license' });
+  }
+});
+
 export default router;

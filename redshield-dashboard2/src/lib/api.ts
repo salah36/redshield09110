@@ -559,6 +559,45 @@ class APIClient {
   async getMyLicense() {
     return this.request<MyLicenseResponse>('/api/license-keys/my-license');
   }
+
+  // ============================================================================
+  // ADMIN USER MANAGEMENT METHODS (Owner Only)
+  // ============================================================================
+
+  // Update user role
+  async updateUserRole(userId: string, role: string) {
+    return this.request<{ message: string; role: string }>(`/api/admin/users/${userId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  // Ban/unban user
+  async banUser(userId: string, banned: boolean) {
+    return this.request<{ message: string; is_active: boolean }>(`/api/admin/users/${userId}/ban`, {
+      method: 'PATCH',
+      body: JSON.stringify({ banned }),
+    });
+  }
+
+  // Delete user
+  async deleteUser(userId: string) {
+    return this.request<{ message: string }>(`/api/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Revoke user's license
+  async revokeUserLicense(userId: string) {
+    return this.request<{ message: string; licensesRevoked: number }>(`/api/admin/users/${userId}/revoke-license`, {
+      method: 'PATCH',
+    });
+  }
+
+  // Get single user details with licenses
+  async getAdminUserDetails(userId: string) {
+    return this.request<{ user: DashboardUser; licenses: any[] }>(`/api/admin/users/${userId}`);
+  }
 }
 
 // Export singleton instance
