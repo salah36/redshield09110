@@ -114,6 +114,8 @@ const DashboardUsers = () => {
     switch (role) {
       case 'OWNER': return 'default';
       case 'CONTRIBUTOR': return 'secondary';
+      case 'SERVER_ADMIN': return 'secondary';
+      case 'MEMBER': return 'outline';
       default: return 'outline';
     }
   };
@@ -297,6 +299,7 @@ const DashboardUsers = () => {
                   <SelectItem value="OWNER">OWNER</SelectItem>
                   <SelectItem value="CONTRIBUTOR">CONTRIBUTOR</SelectItem>
                   <SelectItem value="SERVER_ADMIN">SERVER_ADMIN</SelectItem>
+                  <SelectItem value="MEMBER">MEMBER</SelectItem>
                 </SelectContent>
               </Select>
             </div>

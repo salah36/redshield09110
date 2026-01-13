@@ -612,8 +612,15 @@ router.get('/dashboard-users', isOwnerMiddleware, async (req, res) => {
         ) AS server_blacklist_count
       FROM dashboard_users du
       LEFT JOIN guild_configs gc ON du.linked_server_id = gc.guild_id
-      WHERE du.is_active = TRUE
-      ORDER BY du.last_seen DESC
+      ORDER BY
+        CASE du.role
+          WHEN 'OWNER' THEN 1
+          WHEN 'CONTRIBUTOR' THEN 2
+          WHEN 'SERVER_ADMIN' THEN 3
+          WHEN 'MEMBER' THEN 4
+          ELSE 5
+        END,
+        du.last_seen DESC
     `);
     res.json(rows);
   } catch (error) {
@@ -1579,8 +1586,8 @@ router.patch('/admin/users/:userId/role', isOwnerMiddleware, async (req, res) =>
     const { userId } = req.params;
     const { role } = req.body;
 
-    if (!['OWNER', 'CONTRIBUTOR', 'SERVER_ADMIN'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role. Must be OWNER, CONTRIBUTOR, or SERVER_ADMIN' });
+    if (!['OWNER', 'CONTRIBUTOR', 'SERVER_ADMIN', 'MEMBER'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be OWNER, CONTRIBUTOR, SERVER_ADMIN, or MEMBER' });
     }
 
     const [result] = await pool.execute(

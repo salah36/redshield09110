@@ -71,11 +71,26 @@ app.get(
     failureRedirect: `${config.frontendUrl}?error=auth_failed`,
   }),
   async (req, res) => {
-    // Note: We no longer auto-insert users into dashboard_users here
-    // Users only get added to dashboard_users when they:
-    // 1. Have the Discord contributor role
-    // 2. Claim a valid license key
-    // This prevents random users from getting contributor access
+    // Auto-add all users to dashboard_users with MEMBER role on first login
+    try {
+      await pool.execute(
+        `INSERT INTO dashboard_users (discord_user_id, username, discriminator, avatar, role, is_active, last_seen)
+         VALUES (?, ?, ?, ?, 'MEMBER', TRUE, NOW())
+         ON DUPLICATE KEY UPDATE
+           username = VALUES(username),
+           discriminator = VALUES(discriminator),
+           avatar = VALUES(avatar),
+           last_seen = NOW()`,
+        [
+          req.user.id,
+          req.user.username,
+          req.user.discriminator || '0',
+          req.user.avatar || null
+        ]
+      );
+    } catch (error) {
+      console.error('Error auto-adding user to dashboard_users:', error);
+    }
     res.redirect(config.frontendUrl);
   }
 );
