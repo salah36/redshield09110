@@ -9,7 +9,8 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../../..', '.env') });
 
 export const config = {
-  port: parseInt(process.env.DASHBOARD_PORT) || 8081,
+  // Render uses PORT env var, fallback to DASHBOARD_PORT for backward compatibility
+  port: parseInt(process.env.PORT || process.env.DASHBOARD_PORT) || 8081,
   baseUrl: process.env.DASHBOARD_BASE_URL || 'http://localhost:8081',
   frontendUrl: process.env.DASHBOARD_FRONTEND_URL || 'http://localhost:8080',
 
