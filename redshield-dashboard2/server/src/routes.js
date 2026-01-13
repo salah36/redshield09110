@@ -417,7 +417,7 @@ router.get('/stats', isContributor, async (req, res) => {
 
     // Get recent entries (last 7 days)
     const [recentResult] = await pool.execute(
-      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= NOW() - INTERVAL '7 days''
+      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= NOW() - INTERVAL \'7 days\''
     );
 
     res.json({
@@ -825,7 +825,7 @@ router.get('/public/stats', async (req, res) => {
 
     // Get recent entries (last 7 days)
     const [recentResult] = await pool.execute(
-      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= NOW() - INTERVAL '7 days''
+      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= NOW() - INTERVAL \'7 days\''
     );
 
     res.json({
@@ -1075,7 +1075,7 @@ router.get('/license-keys/stats/summary', isOwnerMiddleware, async (req, res) =>
     const [recentClaims] = await pool.execute(`
       SELECT COUNT(*) as count
       FROM license_keys
-      WHERE claimed_at >= NOW() - INTERVAL '7 days'
+      WHERE claimed_at >= NOW() - INTERVAL \'7 days\'
     `);
 
     const [totalGenerated] = await pool.execute(`
