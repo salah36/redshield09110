@@ -133,7 +133,6 @@ async function applyBotPresence() {
 // Initialize services
 let logNotifier;
 let licenseChecker;
-let presenceInterval;
 
 // Event: Bot ready
 client.once('clientReady', async () => {
@@ -143,13 +142,8 @@ client.once('clientReady', async () => {
     // Sync guild information to database
     await syncGuildInfo();
 
-    // Apply initial bot presence
+    // Apply initial bot presence (only once at startup)
     await applyBotPresence();
-
-    // Check for presence updates every 10 seconds
-    presenceInterval = setInterval(async () => {
-        await applyBotPresence();
-    }, 10000);
 
     // Start log notifier service
     logNotifier = new LogNotifierService(client);
@@ -282,9 +276,6 @@ process.on('SIGINT', async () => {
     }
     if (licenseChecker) {
         licenseChecker.stop();
-    }
-    if (presenceInterval) {
-        clearInterval(presenceInterval);
     }
     await pool.end();
     client.destroy();
