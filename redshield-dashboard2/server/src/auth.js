@@ -59,7 +59,8 @@ export function isOwnerMiddleware(req, res, next) {
   return res.status(403).json({ error: 'Access denied: Owner only' });
 }
 
-// Middleware to check if user is a contributor (has contributor or partner role in main guild)
+// Middleware to check if user is a contributor
+// User must have: Owner status OR Discord contributor role OR active license
 export async function isContributor(req, res, next) {
   if (!req.isAuthenticated()) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -77,50 +78,50 @@ export async function isContributor(req, res, next) {
   // Import pool here to avoid circular dependency
   const { pool } = await import('./database.js');
 
-  let hasContributorRole = false;
+  let hasDiscordRole = false;
+  let hasActiveLicense = false;
 
-  // First, check cached role in database
+  // Check Discord API for contributor role (source of truth)
   try {
-    const [cachedUsers] = await pool.execute(
-      'SELECT role FROM dashboard_users WHERE discord_user_id = ? AND is_active = TRUE',
-      [req.user.id]
-    );
-    if (cachedUsers.length > 0 && (cachedUsers[0].role === 'OWNER' || cachedUsers[0].role === 'CONTRIBUTOR')) {
-      hasContributorRole = true;
-    }
-  } catch (dbError) {
-    console.error('Error checking cached role:', dbError);
-  }
-
-  // If not found in cache, try Discord API (fresh check)
-  if (!hasContributorRole) {
-    try {
-      const response = await fetch(
-        `https://discord.com/api/v10/users/@me/guilds/${config.mainGuild.id}/member`,
-        {
-          headers: {
-            Authorization: `Bearer ${req.user.accessToken}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const member = await response.json();
-        hasContributorRole = member.roles.includes(config.mainGuild.contributorRoleId);
+    const response = await fetch(
+      `https://discord.com/api/v10/users/@me/guilds/${config.mainGuild.id}/member`,
+      {
+        headers: {
+          Authorization: `Bearer ${req.user.accessToken}`,
+        },
       }
-    } catch (error) {
-      console.error('Error checking Discord contributor status:', error);
+    );
+
+    if (response.ok) {
+      const member = await response.json();
+      hasDiscordRole = member.roles.includes(config.mainGuild.contributorRoleId);
+    }
+  } catch (error) {
+    console.error('Error checking Discord contributor status:', error);
+  }
+
+  // Check for active license
+  if (!hasDiscordRole) {
+    try {
+      const [licenseRows] = await pool.execute(
+        `SELECT * FROM license_keys
+         WHERE claimed_by = ? AND status = 'CLAIMED' AND expires_at > NOW()`,
+        [req.user.id]
+      );
+      hasActiveLicense = licenseRows.length > 0;
+    } catch (dbError) {
+      console.error('Error checking license:', dbError);
     }
   }
 
-  if (hasContributorRole) {
+  if (hasDiscordRole || hasActiveLicense) {
     req.userRoles = {
       isContributor: true,
     };
     return next();
   }
 
-  res.status(403).json({ error: 'Insufficient permissions. Contributor role required.' });
+  res.status(403).json({ error: 'Insufficient permissions. Contributor role or active license required.' });
 }
 
 export default passport;

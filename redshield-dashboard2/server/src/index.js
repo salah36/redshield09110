@@ -71,23 +71,11 @@ app.get(
     failureRedirect: `${config.frontendUrl}?error=auth_failed`,
   }),
   async (req, res) => {
-    // Auto-save user to database on login
-    try {
-      const user = req.user;
-      await pool.execute(
-        `INSERT INTO dashboard_users (discord_user_id, username, discriminator, avatar, last_seen)
-         VALUES (?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE
-           username = VALUES(username),
-           discriminator = VALUES(discriminator),
-           avatar = VALUES(avatar),
-           last_seen = NOW()`,
-        [user.id, user.username, user.discriminator || '0', user.avatar]
-      );
-    } catch (error) {
-      console.error('Error saving user to database:', error);
-    }
-    // Successful authentication
+    // Note: We no longer auto-insert users into dashboard_users here
+    // Users only get added to dashboard_users when they:
+    // 1. Have the Discord contributor role
+    // 2. Claim a valid license key
+    // This prevents random users from getting contributor access
     res.redirect(config.frontendUrl);
   }
 );

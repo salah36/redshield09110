@@ -452,62 +452,44 @@ router.get('/user/me', isAuthenticated, async (req, res) => {
     const userIsOwner = isOwner(req.user.id);
     console.log('Is Owner:', userIsOwner);
 
-    let isContributor = userIsOwner; // Owner is always contributor
+    let isContributorRole = false; // Has Discord contributor role
+    let hasActiveLicense = false;  // Has active license key
 
-    // First, check cached role in database
-    let cachedRole = null;
-    try {
-      const [cachedUsers] = await pool.execute(
-        'SELECT role FROM dashboard_users WHERE discord_user_id = ? AND is_active = TRUE',
-        [req.user.id]
-      );
-      if (cachedUsers.length > 0) {
-        cachedRole = cachedUsers[0].role;
-        console.log('Cached role from database:', cachedRole);
-      }
-    } catch (dbError) {
-      console.error('Error checking cached role:', dbError);
+    // Owner is always a contributor
+    if (userIsOwner) {
+      isContributorRole = true;
     }
 
-    // Try to verify with Discord API (fresh check)
-    try {
-      const response = await fetch(
-        `https://discord.com/api/v10/users/@me/guilds/${process.env.MAIN_GUILD_ID}/member`,
-        {
-          headers: {
-            Authorization: `Bearer ${req.user.accessToken}`,
-          },
-        }
-      );
+    // Try to verify Discord contributor role via API (fresh check - this is the source of truth)
+    if (!userIsOwner) {
+      try {
+        const response = await fetch(
+          `https://discord.com/api/v10/users/@me/guilds/${process.env.MAIN_GUILD_ID}/member`,
+          {
+            headers: {
+              Authorization: `Bearer ${req.user.accessToken}`,
+            },
+          }
+        );
 
-      if (response.ok) {
-        const member = await response.json();
-        console.log('Discord roles:', member.roles);
-        console.log('Contributor role ID:', process.env.CONTRIBUTOR_ROLE_ID);
-        const hasContributorRole = member.roles.includes(process.env.CONTRIBUTOR_ROLE_ID);
-        console.log('Has contributor role (fresh check):', hasContributorRole);
-        isContributor = isContributor || hasContributorRole;
-      } else {
-        console.log('Discord API response not OK:', response.status, response.statusText);
-        // Fall back to cached role if Discord API fails
-        if (cachedRole === 'OWNER' || cachedRole === 'CONTRIBUTOR') {
-          console.log('Using cached role due to Discord API failure');
-          isContributor = true;
+        if (response.ok) {
+          const member = await response.json();
+          console.log('Discord roles:', member.roles);
+          console.log('Contributor role ID:', process.env.CONTRIBUTOR_ROLE_ID);
+          isContributorRole = member.roles.includes(process.env.CONTRIBUTOR_ROLE_ID);
+          console.log('Has contributor role (Discord API):', isContributorRole);
+        } else {
+          console.log('Discord API response not OK:', response.status, response.statusText);
+          // Do NOT fall back to cached role - only trust Discord API or active license
         }
-      }
-    } catch (fetchError) {
-      console.error('Discord API fetch error:', fetchError.message);
-      // Fall back to cached role if Discord API fails
-      if (cachedRole === 'OWNER' || cachedRole === 'CONTRIBUTOR') {
-        console.log('Using cached role due to Discord API error');
-        isContributor = true;
+      } catch (fetchError) {
+        console.error('Discord API fetch error:', fetchError.message);
+        // Do NOT fall back to cached role - only trust Discord API or active license
       }
     }
-    console.log('Final isContributor:', isContributor);
 
     // Check for active license and get license info
     let licenseInfo = null;
-    let hasActiveLicense = false;
     try {
       const [licenseRows] = await pool.execute(
         `SELECT * FROM license_keys
@@ -531,7 +513,7 @@ router.get('/user/me', isAuthenticated, async (req, res) => {
           );
           license.status = 'EXPIRED';
 
-          // Also update dashboard_users to remove contributor role if license expired
+          // Also update dashboard_users to remove contributor status if license expired
           await pool.execute(
             `UPDATE dashboard_users SET role = 'SERVER_ADMIN', is_active = FALSE
              WHERE discord_user_id = ? AND role = 'CONTRIBUTOR'`,
@@ -553,31 +535,29 @@ router.get('/user/me', isAuthenticated, async (req, res) => {
           is_active: hasActiveLicense,
           days_remaining: daysRemaining
         };
-
-        // If license is active, user should be contributor
-        if (hasActiveLicense && !isContributor) {
-          isContributor = true;
-        }
-        // If license expired, user should not be contributor (unless Owner)
-        if (!hasActiveLicense && !userIsOwner && cachedRole === 'CONTRIBUTOR') {
-          isContributor = false;
-        }
       }
     } catch (licenseError) {
       console.error('Error checking license:', licenseError);
     }
 
-    // Update last_seen in dashboard_users table
-    if (userIsOwner || isContributor) {
+    // Determine final contributor status:
+    // User is contributor ONLY if: Owner OR has Discord role OR has active license
+    const finalIsContributor = userIsOwner || isContributorRole || hasActiveLicense;
+    console.log('Final isContributor:', finalIsContributor, '(owner:', userIsOwner, ', discordRole:', isContributorRole, ', license:', hasActiveLicense, ')');
+
+    // Only update dashboard_users if user has valid contributor access
+    if (finalIsContributor) {
       try {
         await pool.execute(
           `INSERT INTO dashboard_users
-           (discord_user_id, username, discriminator, avatar, role, last_seen)
-           VALUES (?, ?, ?, ?, ?, NOW())
+           (discord_user_id, username, discriminator, avatar, role, is_active, last_seen)
+           VALUES (?, ?, ?, ?, ?, TRUE, NOW())
            ON DUPLICATE KEY UPDATE
              username = VALUES(username),
              discriminator = VALUES(discriminator),
              avatar = VALUES(avatar),
+             role = VALUES(role),
+             is_active = TRUE,
              last_seen = NOW()`,
           [
             req.user.id,
@@ -597,7 +577,7 @@ router.get('/user/me', isAuthenticated, async (req, res) => {
       username: req.user.username,
       discriminator: req.user.discriminator,
       avatar: req.user.avatar,
-      isContributor,
+      isContributor: finalIsContributor,
       isOwner: userIsOwner,
       license: licenseInfo,
     });
