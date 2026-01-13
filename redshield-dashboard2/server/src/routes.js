@@ -417,7 +417,7 @@ router.get('/stats', isContributor, async (req, res) => {
 
     // Get recent entries (last 7 days)
     const [recentResult] = await pool.execute(
-      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= NOW() - INTERVAL \'7 days\''
+      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)'
     );
 
     res.json({
@@ -552,11 +552,11 @@ router.get('/user/me', isAuthenticated, async (req, res) => {
           `INSERT INTO dashboard_users
            (discord_user_id, username, discriminator, avatar, role, is_active, last_seen)
            VALUES (?, ?, ?, ?, ?, TRUE, NOW())
-           ON CONFLICT (discord_user_id) DO UPDATE SET
-             username = EXCLUDED.username,
-             discriminator = EXCLUDED.discriminator,
-             avatar = EXCLUDED.avatar,
-             role = EXCLUDED.role,
+           ON DUPLICATE KEY UPDATE
+             username = VALUES(username),
+             discriminator = VALUES(discriminator),
+             avatar = VALUES(avatar),
+             role = VALUES(role),
              is_active = TRUE,
              last_seen = NOW()`,
           [
@@ -684,11 +684,16 @@ router.post('/trusted-partners', isOwnerMiddleware, async (req, res) => {
     }
 
     const [result] = await pool.execute(
-      'INSERT INTO trusted_partners (discord_link, discord_server_id, server_icon_url, display_name, notes, created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING *',
+      'INSERT INTO trusted_partners (discord_link, discord_server_id, server_icon_url, display_name, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)',
       [discord_link, discord_server_id, server_icon_url || null, display_name, notes || null, created_by]
     );
 
-    res.status(201).json(result[0]);
+    const [rows] = await pool.execute(
+      'SELECT * FROM trusted_partners WHERE id = ?',
+      [result.insertId]
+    );
+
+    res.status(201).json(rows[0]);
   } catch (error) {
     console.error('Error adding trusted partner:', error);
     res.status(500).json({ error: 'Failed to add trusted partner' });
@@ -825,7 +830,7 @@ router.get('/public/stats', async (req, res) => {
 
     // Get recent entries (last 7 days)
     const [recentResult] = await pool.execute(
-      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= NOW() - INTERVAL \'7 days\''
+      'SELECT COUNT(*) as count FROM blacklist_entries WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)'
     );
 
     res.json({
@@ -987,10 +992,16 @@ router.post('/license-keys/generate', isOwnerMiddleware, async (req, res) => {
     }
 
     // Insert the new license key
-    const [rows] = await pool.execute(
+    const [result] = await pool.execute(
       `INSERT INTO license_keys (license_key, duration_days, created_by, notes, status)
-       VALUES (?, ?, ?, ?, 'ACTIVE') RETURNING *`,
+       VALUES (?, ?, ?, ?, 'ACTIVE')`,
       [licenseKey, parseInt(duration_days), req.user.id, notes || null]
+    );
+
+    // Fetch the created key
+    const [rows] = await pool.execute(
+      'SELECT * FROM license_keys WHERE id = ?',
+      [result.insertId]
     );
 
     res.status(201).json(rows[0]);
@@ -1075,7 +1086,7 @@ router.get('/license-keys/stats/summary', isOwnerMiddleware, async (req, res) =>
     const [recentClaims] = await pool.execute(`
       SELECT COUNT(*) as count
       FROM license_keys
-      WHERE claimed_at >= NOW() - INTERVAL \'7 days\'
+      WHERE claimed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
     `);
 
     const [totalGenerated] = await pool.execute(`
@@ -1326,10 +1337,10 @@ router.post('/license-keys/claim', isAuthenticated, async (req, res) => {
         `INSERT INTO dashboard_users
          (discord_user_id, username, discriminator, avatar, role, is_active, last_seen)
          VALUES (?, ?, ?, ?, 'CONTRIBUTOR', TRUE, NOW())
-         ON CONFLICT (discord_user_id) DO UPDATE SET
-           username = EXCLUDED.username,
-           discriminator = EXCLUDED.discriminator,
-           avatar = EXCLUDED.avatar,
+         ON DUPLICATE KEY UPDATE
+           username = VALUES(username),
+           discriminator = VALUES(discriminator),
+           avatar = VALUES(avatar),
            role = 'CONTRIBUTOR',
            is_active = TRUE,
            last_seen = NOW()`,
@@ -1440,12 +1451,12 @@ router.post('/license-keys/generate-batch', isOwnerMiddleware, async (req, res) 
 
         const [result] = await connection.execute(
           `INSERT INTO license_keys (license_key, duration_days, created_by, notes, status)
-           VALUES (?, ?, ?, ?, 'ACTIVE') RETURNING id`,
+           VALUES (?, ?, ?, ?, 'ACTIVE')`,
           [licenseKey, parseInt(duration_days), req.user.id, notes || null]
         );
 
         generatedKeys.push({
-          id: result[0]?.id,
+          id: result.insertId,
           license_key: licenseKey,
           duration_days: parseInt(duration_days),
           status: 'ACTIVE'

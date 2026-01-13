@@ -27,7 +27,7 @@ export const config = {
   },
 
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/redshield',
+    url: process.env.DATABASE_URL || 'mysql://root@localhost:3306/redshield',
   },
 
   session: {
