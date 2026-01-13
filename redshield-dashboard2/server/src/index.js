@@ -9,10 +9,35 @@ import { pool } from './database.js';
 
 const app = express();
 
-// Middleware
+// Trust proxy for Render/Vercel (required for secure cookies behind reverse proxy)
+app.set('trust proxy', 1);
+
+// Debug: Log frontend URL on startup
+console.log('CORS origin set to:', config.frontendUrl);
+
+// Middleware - CORS with explicit configuration
 app.use(cors({
-  origin: config.frontendUrl,
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+
+    // Check if origin matches frontend URL
+    const allowedOrigins = [
+      config.frontendUrl,
+      'http://localhost:8080',
+      'http://localhost:5173'
+    ];
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // Allow anyway for debugging
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
 app.use(express.json());
@@ -90,6 +115,22 @@ app.use('/api/bot', botRoutes);
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Debug endpoint to check config
+app.get('/debug/config', (req, res) => {
+  res.json({
+    frontendUrl: config.frontendUrl,
+    baseUrl: config.baseUrl,
+    nodeEnv: process.env.NODE_ENV,
+    origin: req.get('origin'),
+  });
+});
+
+// Error handling middleware (must be last)
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // Test database connection on startup
