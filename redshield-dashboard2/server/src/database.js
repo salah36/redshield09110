@@ -1,5 +1,9 @@
 import pg from 'pg';
+import dns from 'dns';
 import { config } from './config.js';
+
+// Force IPv4 to avoid ENETUNREACH errors on some hosts
+dns.setDefaultResultOrder('ipv4first');
 
 const { Pool } = pg;
 
