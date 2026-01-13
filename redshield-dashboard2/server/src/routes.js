@@ -53,9 +53,13 @@ router.get('/blacklist', isContributor, async (req, res) => {
     const total = countResult[0].total;
 
     // Get paginated results
+    // Note: LIMIT/OFFSET must be interpolated directly as MySQL prepared statements
+    // don't support placeholders for these values in all versions
+    const limitInt = parseInt(limit);
+    const offsetInt = parseInt(offset) || 0;
     const [rows] = await pool.execute(
-      `SELECT * FROM blacklist_entries ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), offset]
+      `SELECT * FROM blacklist_entries ${whereClause} ORDER BY created_at DESC LIMIT ${limitInt} OFFSET ${offsetInt}`,
+      params
     );
 
     res.json({
@@ -1146,6 +1150,10 @@ router.get('/license-keys', isOwnerMiddleware, async (req, res) => {
     const total = countResult[0].total;
 
     // Get paginated results with user info
+    // Note: LIMIT/OFFSET must be interpolated directly as MySQL prepared statements
+    // don't support placeholders for these values in all versions
+    const limitInt = parseInt(limit);
+    const offsetInt = parseInt(offset) || 0;
     const [rows] = await pool.execute(
       `SELECT
         lk.*,
@@ -1155,8 +1163,8 @@ router.get('/license-keys', isOwnerMiddleware, async (req, res) => {
        LEFT JOIN dashboard_users du ON lk.claimed_by = du.discord_user_id
        ${whereClause}
        ORDER BY lk.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), offset]
+       LIMIT ${limitInt} OFFSET ${offsetInt}`,
+      params
     );
 
     res.json({
@@ -1512,9 +1520,12 @@ router.get('/admin/users', isOwnerMiddleware, async (req, res) => {
     );
 
     // Get users with pagination
+    // Note: LIMIT/OFFSET must be interpolated directly for MySQL compatibility
+    const limitInt = parseInt(limit);
+    const offsetInt = parseInt(offset) || 0;
     const [users] = await pool.execute(
-      `SELECT * FROM dashboard_users ${whereClause} ORDER BY last_seen DESC LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), offset]
+      `SELECT * FROM dashboard_users ${whereClause} ORDER BY last_seen DESC LIMIT ${limitInt} OFFSET ${offsetInt}`,
+      params
     );
 
     res.json({
